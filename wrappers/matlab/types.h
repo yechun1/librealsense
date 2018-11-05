@@ -133,7 +133,7 @@ template<> mxArray* MatlabParamParser::mx_wrapper_fns<rs2::device_list>::wrap(rs
         auto idx_cell = mxCreateNumericMatrix(1, 1, idx_wrap_t::value::value, mxREAL);
         *static_cast<idx_wrap_t::type*>(mxGetData(idx_cell)) = static_cast<idx_wrap_t::type>(i);
         mxSetCell(cells, 0, dl_cell);
-        mxSetCell(cells, 1, idx_cell);
+        mxSetCell(cells, 1, dl_cell);
         mxSetCell(vec, i, cells);
     }
 
@@ -149,19 +149,17 @@ template<typename T> struct MatlabParamParser::mx_wrapper_fns<T, typename std::e
     static T parse(const mxArray* cell)
     {
         using internal_t = typename type_traits<T>::rs2_internal_t;
-        // since stream_profiles embed the raw pointer directly, we need to add on the extra level of indirection expected by from_internal.
-        auto internal_p = mx_wrapper_fns<internal_t>::parse(cell);
-        return traits_trampoline::from_internal<T>(&internal_p);
+        return traits_trampoline::from_internal<T>(mx_wrapper_fns<internal_t*>::parse(cell));
     }
     static mxArray* wrap(T&& val)
     {
         auto cells = mxCreateCellMatrix(1, 2);
         auto handle_cell = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
-        auto handle_ptr = static_cast<uint64_t*>(mxGetData(handle_cell));
+        auto handle_ptr = static_cast<uint64_t*>(mxGetData(cells));
         *handle_ptr = reinterpret_cast<uint64_t>(typename type_traits<T>::rs2_internal_t(val));
 
         auto own_cell = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
-        auto own_ptr = static_cast<uint64_t*>(mxGetData(own_cell));
+        auto own_ptr = static_cast<uint64_t*>(mxGetData(cells));
         // if its cloned, give the wrapper ownership of the stream_profile
         if (val.is_cloned())
         {
@@ -203,8 +201,6 @@ template<typename T> struct MatlabParamParser::mx_wrapper_fns<T, typename std::e
     {
         auto inptr = mx_wrapper_fns<typename type_traits<T>::rs2_internal_t>::parse(cell);
         rs2_frame_add_ref(inptr, nullptr);
-        // Can the jump through rs2::frame happen automatically? e.g. is rs2::points(rs2_frame* inptr) equivalent to rs2::points(rs2::frame(rs2_frame* inptr))?
-        // If not, might have to use trampolining like stream_profile
         return T(inptr);
     }
     static void destroy(const mxArray* cell)
